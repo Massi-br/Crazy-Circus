@@ -1,8 +1,10 @@
 package crazy.model;
 
-import java.beans.PropertyChangeEvent;
+import java.beans.PropertyVetoException;
+
 import java.beans.PropertyChangeListener;
 import java.beans.VetoableChangeListener;
+import java.beans.VetoableChangeSupport;
 import java.beans.PropertyChangeSupport;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -22,10 +24,12 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
     private long time;
     private long delta;
     private Order lastOrder;
+    private final PropertyChangeSupport pcs;
+    private final VetoableChangeSupport vcs; 
     
     private final Set<E> elements;
     private EnumMap<Rank, PodiumModel<E>> podiumModels;
-    private final PropertyChangeSupport pcs;
+
     
     // CONSTRUCTEURS
 
@@ -39,7 +43,8 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
         Contract.checkCondition(elems.size() >= 2);
 
         elements = new HashSet<E>(elems);
-		this.pcs = new PropertyChangeSupport(this);
+		pcs = new PropertyChangeSupport(this);
+		vcs = new VetoableChangeSupport(this);
         podiumModels = new EnumMap<Rank, PodiumModel<E>>(Rank.class);
         changePodiumModels();
         internalReinit();
@@ -49,7 +54,6 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
 
     @Override
     public Order getLastOrder() {
-    	pcs.firePropertyChange(PROP_LAST_ORDER, null, lastOrder);
         return lastOrder;
     }
 
@@ -74,9 +78,7 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
         PodiumModel<E> workRight = podiumModels.get(Rank.WORK_RIGHT);
         PodiumModel<E> goalLeft = podiumModels.get(Rank.GOAL_LEFT);
         PodiumModel<E> goalRight = podiumModels.get(Rank.GOAL_RIGHT);
-        boolean b =workLeft.similar(goalLeft) && workRight.similar(goalRight);
-        pcs.firePropertyChange(PROP_FINISHED, null, b );
-        return b;
+        return workLeft.similar(goalLeft) && workRight.similar(goalRight);
     }
 
     // COMMANDES
@@ -85,6 +87,7 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
     public void executeOrder(Order o) throws PropertyVetoException {
         Contract.checkCondition(o != null);
 
+        vcs.fireVetoableChange(PROP_LAST_ORDER, getLastOrder(), o); 
         switch (o) {
             case LO:
                 sendTop(Rank.WORK_LEFT, Rank.WORK_RIGHT);
@@ -107,16 +110,21 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
 
         shotsNb += 1;
         lastOrder = o;
-        if (isFinished()) {
+        pcs.firePropertyChange(PROP_LAST_ORDER, null, lastOrder);
+        boolean b = isFinished();
+        if (b) {
             delta = System.currentTimeMillis() - time;
         }
+        pcs.firePropertyChange(PROP_FINISHED, null, b);
     }
 
     @Override
-    public void reinit() {
+    public void reinit() { 
         podiumModels.clear();
         changePodiumModels();
         internalReinit();
+        pcs.firePropertyChange(PROP_FINISHED, null, isFinished());
+
     }
 
     // OUTILS
@@ -231,25 +239,18 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
 	@Override
 	public PropertyChangeListener[] getPropertyChangeListeners(String pName) {
 		Contract.checkCondition(pName != null);
+		
 		return pcs.getPropertyChangeListeners(pName);
 	}
 
-	@Override
-	public VetoableChangeListener[] getVetoableChangeListeners(String pName) {
-		return null;
-	}
 
 	@Override
 	public void addPropertyChangeListener(String pName, PropertyChangeListener lnr) {
 		Contract.checkCondition(pName != null);
+		
 		pcs.addPropertyChangeListener(pName ,lnr);
 	}
-
-	@Override
-	public void addVetoableChangeListener(String pName, VetoableChangeListener lnr) {
-		
-	}
-
+	
 	@Override
 	public void removePropertyChangeListener(String pName, PropertyChangeListener lnr) {
 		Contract.checkCondition(pName != null);
@@ -258,8 +259,19 @@ public class StdPodiumManager<E> implements PodiumManager<E> {
 	}
 
 	@Override
+	public VetoableChangeListener[] getVetoableChangeListeners(String pName) {
+		Contract.checkCondition(pName!= null);
+		return vcs.getVetoableChangeListeners(pName);
+	}
+	@Override
+	public void addVetoableChangeListener(String pName, VetoableChangeListener lnr) {
+		Contract.checkCondition(pName !=null && lnr != null);
+		vcs.addVetoableChangeListener(pName, lnr);
+	}
+
+	@Override
 	public void removeVetoableChangeListener(String pName, VetoableChangeListener lnr) {
-		// TODO Auto-generated method stub
-		
+		Contract.checkCondition(pName !=null && lnr != null);
+		vcs.removeVetoableChangeListener(pName, lnr);
 	}
 }

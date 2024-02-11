@@ -6,6 +6,10 @@ import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyVetoException;
+import java.beans.VetoableChangeListener;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Set;
@@ -19,6 +23,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 import crazy.model.Order;
 import crazy.model.PodiumManager;
@@ -89,6 +95,7 @@ public class CrazyCircus<E extends Drawable> {
     }
     
     private Map<Rank, Podium<E>> buildAllPodiums() {
+
         Map<Rank, PodiumModel<E>> models = manager.getModels();
         Map<Rank, Podium<E>> podiums = new EnumMap<Rank, Podium<E>>(Rank.class);
         for (Rank r : Rank.values()) {
@@ -156,7 +163,11 @@ public class CrazyCircus<E extends Drawable> {
             public void actionPerformed(ActionEvent e) {
                 JButton b = ((JButton) e.getSource());
                 Order o = Order.valueOf(b.getName());
-                manager.executeOrder(o);
+                try {
+					manager.executeOrder(o);
+				} catch (PropertyVetoException e1) {
+					output.append("* "); 
+				}
             }
         };
         for (Order o : Order.values()) {
@@ -167,7 +178,66 @@ public class CrazyCircus<E extends Drawable> {
             @Override
             public void actionPerformed(ActionEvent e) {
                 manager.reinit();
+                output.setText("");
             }
         });
-    }
+        
+        manager.addPropertyChangeListener(PodiumManager.PROP_FINISHED, new PropertyChangeListener() {
+			
+			@Override
+			public void propertyChange(PropertyChangeEvent evt) {
+				boolean gameOver= (Boolean) evt.getNewValue();
+				updateStateButtons(gameOver);
+				if (gameOver) {
+					output.append("\ngagné en :"+manager.getShotsNb()+" coups et "+ formatTime(manager.getTimeDelta()));
+				}
+				reinitPodiums();
+				
+			}
+		});
+        
+        manager.addPropertyChangeListener(PodiumManager.PROP_LAST_ORDER, new PropertyChangeListener() {
+			@Override
+			public void propertyChange(PropertyChangeEvent evt) {
+				output.append(manager.getLastOrder().name()+" ");
+			}
+		});
+        manager.addVetoableChangeListener(PodiumManager.PROP_LAST_ORDER, new VetoableChangeListener() {
+			
+			@Override
+			public void vetoableChange(PropertyChangeEvent evt) throws PropertyVetoException {
+				if (!soAllower.isSelected() && evt.getNewValue()==Order.SO) {
+					throw new PropertyVetoException("soAllowed", evt);
+				}
+			}
+		});
+        
 }
+    
+/*------------------------TOOLS-----------------------------*/
+
+private void updateStateButtons(boolean b) {
+	for(JButton bt : commandButtons.values() ) {
+		bt.setEnabled(!b);
+	}
+}
+
+private void reinitPodiums() {
+	Map<Rank, PodiumModel<E>> models = manager.getModels();
+	for (Rank r : Rank.values()) {
+		allPodiums.get(r).setModel(models.get(r));
+	}
+			
+}
+
+private String formatTime(long milliseconds) {
+    long totalSeconds = milliseconds / 1000;
+    long minutes = totalSeconds / 60;
+    long seconds = totalSeconds % 60;
+    return String.format("%02d:%02d sec", minutes, seconds);
+}
+
+}
+
+    
+
